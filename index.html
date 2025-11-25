@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Hex Game</title>
+<style>
+  body { text-align: center; font-family: sans-serif; }
+  canvas { border: 1px solid black; touch-action: none; }
+  button { margin: 10px; padding: 5px 10px; }
+</style>
+</head>
+<body>
+
+<button id="toggleDev">Toggle Developer Mode</button>
+<canvas id="hexCanvas" width="700" height="700"></canvas>
+
+<script>
+const canvas = document.getElementById("hexCanvas");
+const ctx = canvas.getContext("2d");
+
+let developerMode = false;
+
+document.getElementById("toggleDev").addEventListener("click", () => {
+  developerMode = !developerMode;
+  drawBoard();
+});
+
+// ----------------------
+// Hex grid settings
+// ----------------------
+const hexSize = 45;
+const rowsPattern = [3, 4, 5, 4, 3];
+const colours = [
+  "#7a9cc6","#7a9cc6","#7a9cc6",
+  "#7a9cc6","#f0edcd","#f0edcd","#7a9cc6",
+  "#7a9cc6","#f0edcd","#d4a373","#f0edcd","#7a9cc6",
+  "#7a9cc6","#5e574d","#ccd5ae","#7a9cc6",
+  "#7a9cc6","#7a9cc6","#7a9cc6"
+];
+
+// Logos (load images)
+const logoFiles = {
+  0: "logos/ship.png",
+  10: "logos/cave.png",
+  8: "logos/castle-tower.png",
+  13: "logos/mountain.png",
+  14: "logos/village.png",
+  9: "logos/desert.png"
+};
+const logos = {};
+for(let idx in logoFiles){
+  const img = new Image();
+  img.src = logoFiles[idx];
+  logos[idx] = img;
+}
+
+// Tile state
+let tileCenters = [];
+let revealed = new Set();
+let tokenTile = null;
+
+// Start visible tile
+const startVisibleTile = 7;
+revealed.add(startVisibleTile);
+tokenTile = startVisibleTile;
+
+// ----------------------
+// Helpers
+// ----------------------
+function hexCorners(cx, cy, size){
+  const corners = [];
+  for(let i=0;i<6;i++){
+    const angle = Math.PI/180*(60*i -30);
+    corners.push([cx + size*Math.cos(angle), cy + size*Math.sin(angle)]);
+  }
+  return corners;
+}
+
+function drawHex(cx, cy, color, outlineColor="black"){
+  const corners = hexCorners(cx, cy, hexSize);
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.moveTo(corners[0][0], corners[0][1]);
+  for(let i=1;i<6;i++) ctx.lineTo(corners[i][0], corners[i][1]);
+  ctx.closePath();
+  ctx.fill();
+  ctx.strokeStyle = outlineColor;
+  ctx.lineWidth = 2;
+  ctx.stroke();
+}
+
+function getNeighbors(idx){
+  const neighbors = [];
+  const [x0,y0] = tileCenters[idx];
+  for(let i=0;i<tileCenters.length;i++){
+    if(i===idx) continue;
+    const [x1,y1] = tileCenters[i];
+    const dx = x1-x0, dy = y1-y0;
+    const dist = Math.hypot(dx,dy);
+    const horiz = hexSize*Math.sqrt(3);
+    const vert = hexSize*1.5;
+    const tol = 2;
+    if(Math.abs(dist-horiz)<tol || Math.abs(dist-vert)<tol){
+      neighbors.push(i);
+    }
+  }
+  return neighbors;
+}
+
+function pointInHex(px,py,hx,hy){
+  const dx = Math.abs(px-hx);
+  const dy = Math.abs(py-hy);
+  if(dy>hexSize) return false;
+  const max_dx = Math.sqrt(3)*(hexSize-dy);
+  return dx<=max_dx;
+}
+
+// ----------------------
+// Draw board
+// ----------------------
+function drawBoard(){
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  tileCenters = [];
+  let hexIndex=0;
+  const wSpacing = hexSize*Math.sqrt(3);
+  const hSpacing = hexSize*1.5;
+  const cx = canvas.width/2;
+  const cy = canvas.height/2;
+  const totalHeight = (rowsPattern.length-1)*hSpacing;
+  const startY = cy + totalHeight/2;
+
+  for(let rowIdx=0;rowIdx<rowsPattern.length;rowIdx++){
+    const count = rowsPattern[rowIdx];
+    const rowWidth = (count-1)*wSpacing;
+    const rowOffsetX = -rowWidth/2;
+    const y = startY - rowIdx*hSpacing;
+    for(let col=0; col<count; col++){
+      const x = cx + rowOffsetX + col*wSpacing;
+      tileCenters.push([x,y]);
+      // Determine color
+      let color = hexIndex<colours.length ? colours[hexIndex] : "#ccc";
+      if(!developerMode && !revealed.has(hexIndex)) color = "black";
+      drawHex(x,y,color);
+
+      // Draw logo
+      if(logos[hexIndex] && (revealed.has(hexIndex) || developerMode)){
+        const img = logos[hexIndex];
+        const sz = hexSize*1.5;
+        ctx.drawImage(img, x-sz/2, y-sz/2, sz, sz);
+      }
+
+      hexIndex++;
+    }
+  }
+
+  // Draw token
+  if(tokenTile!==null){
+    const [x,y] = tileCenters[tokenTile];
+    ctx.strokeStyle="red";
+    ctx.lineWidth=3;
+    ctx.beginPath();
+    ctx.arc(x,y,14,0,Math.PI*2);
+    ctx.stroke();
+  }
+}
+
+// ----------------------
+// Handle clicks
+// ----------------------
+canvas.addEventListener("click",(e)=>{
+  const rect = canvas.getBoundingClientRect();
+  const px = e.clientX - rect.left;
+  const py = e.clientY - rect.top;
+  for(let idx=0;idx<tileCenters.length;idx++){
+    const [hx,hy] = tileCenters[idx];
+    if(pointInHex(px,py,hx,hy)){
+      if(revealed.has(idx) || developerMode){
+        tokenTile = idx;
+        if(!developerMode){
+          const neighbors = getNeighbors(idx);
+          neighbors.forEach(n=>revealed.add(n));
+        }
+        drawBoard();
+        break;
+      }
+    }
+  }
+});
+
+drawBoard();
+</script>
+
+</body>
+</html>
